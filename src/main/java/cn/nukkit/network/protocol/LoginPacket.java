@@ -27,6 +27,9 @@ public class LoginPacket extends DataPacket {
     public long clientId;
     public Skin skin;
 
+    // Fukkit - Will be if proxy server was sent it value.
+    public String hostname;
+
     @Override
     public byte pid() {
         return NETWORK_ID;
@@ -59,25 +62,50 @@ public class LoginPacket extends DataPacket {
     }
 
     private void decodeChainData() {
-        Map<String, List<String>> map = new Gson().fromJson(new String(this.get(getLInt()), StandardCharsets.UTF_8),
-                new TypeToken<Map<String, List<String>>>() {
-                }.getType());
-        if (map.isEmpty() || !map.containsKey("chain") || map.get("chain").isEmpty()) return;
+        // Fukkit end
+        Map<String, List<String>> map = new Gson().fromJson(
+            new String(this.get(getLInt()), StandardCharsets.UTF_8),
+            new TypeToken<Map<String, List<String>>>() {}.getType()
+        );
+
+        if (map.isEmpty() || !map.containsKey("chain") || map.get("chain").isEmpty()) {
+            return;
+        }
+
         List<String> chains = map.get("chain");
+
         for (String c : chains) {
             JsonObject chainMap = decodeToken(c);
-            if (chainMap == null) continue;
-            if (chainMap.has("extraData")) {
-                JsonObject extra = chainMap.get("extraData").getAsJsonObject();
-                if (extra.has("displayName")) this.username = extra.get("displayName").getAsString();
-                if (extra.has("identity")) this.clientUUID = UUID.fromString(extra.get("identity").getAsString());
+            if (chainMap == null || !chainMap.has("extraData")) {
+                continue;
+            }
+
+            JsonObject extra = chainMap.get("extraData").getAsJsonObject();
+            if (extra.has("displayName")) {
+                this.username = extra.get("displayName").getAsString();
+            }
+
+            if (extra.has("identity")) {
+                this.clientUUID = UUID.fromString(extra.get("identity").getAsString());
+            }
+
+            // Fukkit - add field
+            if (extra.has("hostName")) {
+                this.hostname = extra.get("hostName").getAsString();
             }
         }
+        // Fukkit end
     }
 
     private void decodeSkinData() {
         JsonObject skinToken = decodeToken(new String(this.get(this.getLInt())));
-        if (skinToken.has("ClientRandomId")) this.clientId = skinToken.get("ClientRandomId").getAsLong();
+
+        Objects.requireNonNull(skinToken);
+
+        if (skinToken.has("ClientRandomId")) {
+            this.clientId = skinToken.get("ClientRandomId").getAsLong();
+        }
+
         skin = new Skin();
         if (skinToken.has("SkinId")) {
             skin.setSkinId(skinToken.get("SkinId").getAsString());

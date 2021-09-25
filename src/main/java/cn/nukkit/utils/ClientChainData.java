@@ -57,6 +57,12 @@ public final class ClientChainData implements LoginChainData {
         return username;
     }
 
+    // Fukkit end
+    public String getHostname() {
+        return hostname;
+    }
+    // Fukkit end
+
     @Override
     public UUID getClientUUID() {
         return clientUUID;
@@ -164,6 +170,11 @@ public final class ClientChainData implements LoginChainData {
     private UUID clientUUID;
     private String xuid;
 
+    // Fukkit end
+    // Will be if proxy server was sent it value.
+    private String hostname;
+    // Fukkit end
+
     private static ECPublicKey generateKey(String base64) throws NoSuchAlgorithmException, InvalidKeySpecException {
         return (ECPublicKey) KeyFactory.getInstance("EC").generatePublic(new X509EncodedKeySpec(Base64.getDecoder().decode(base64)));
     }
@@ -244,14 +255,31 @@ public final class ClientChainData implements LoginChainData {
         for (String c : chains) {
             JsonObject chainMap = decodeToken(c);
             if (chainMap == null) continue;
-            if (chainMap.has("extraData")) {
-                JsonObject extra = chainMap.get("extraData").getAsJsonObject();
-                if (extra.has("displayName")) this.username = extra.get("displayName").getAsString();
-                if (extra.has("identity")) this.clientUUID = UUID.fromString(extra.get("identity").getAsString());
-                if (extra.has("XUID")) this.xuid = extra.get("XUID").getAsString();
-            }
-            if (chainMap.has("identityPublicKey"))
+
+            // Fukkit end
+            if (chainMap.has("identityPublicKey")) {
                 this.identityPublicKey = chainMap.get("identityPublicKey").getAsString();
+            }
+
+            if (!chainMap.has("extraData")) {
+                continue;
+            }
+
+            JsonObject extra = chainMap.get("extraData").getAsJsonObject();
+
+            if (extra.has("displayName")) {
+                this.username = extra.get("displayName").getAsString();
+            }
+            if (extra.has("identity")) {
+                this.clientUUID = UUID.fromString(extra.get("identity").getAsString());
+            }
+            if (extra.has("hostName")) {
+                this.hostname = extra.get("hostName").getAsString();
+            }
+            if (extra.has("XUID")) {
+                this.xuid = extra.get("XUID").getAsString();
+            }
+            // Fukkit end
         }
 
         if (!xboxAuthed) {

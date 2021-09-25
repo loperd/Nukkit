@@ -177,6 +177,9 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
     protected String iusername;
     protected String displayName;
 
+    // Fukkit - forward client IP
+    private InetSocketAddress clientSocketAddress;
+
     protected int startAction = -1;
 
     protected Vector3 sleeping = null;
@@ -674,13 +677,29 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
         }
     }
 
+    // Fukkit start - return real client IP address
     public String getAddress() {
-        return this.socketAddress.getAddress().getHostAddress();
+        if (null == this.clientSocketAddress) {
+            return this.socketAddress.getHostString();
+        }
+
+        return this.clientSocketAddress.getAddress().getHostAddress();
     }
 
     public int getPort() {
-        return this.socketAddress.getPort();
+        if (null == this.clientSocketAddress) {
+            return this.socketAddress.getPort();
+        }
+
+        return this.clientSocketAddress.getPort();
     }
+    // Fukkit end
+
+    // Fukkit start - add client socket address getter
+    public InetSocketAddress getClientSocketAddress() {
+        return this.clientSocketAddress;
+    }
+    // Fukkit end
 
     public InetSocketAddress getSocketAddress() {
         return this.socketAddress;
@@ -2088,18 +2107,24 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
 
                             this.sendPlayStatus(PlayStatusPacket.LOGIN_FAILED_SERVER);
                         }
-                        if (((LoginPacket) packet).protocol < 137) {
-                            DisconnectPacket disconnectPacket = new DisconnectPacket();
-                            disconnectPacket.message = message;
-                            disconnectPacket.encode();
-                            BatchPacket batch = new BatchPacket();
-                            batch.payload = disconnectPacket.getBuffer();
-                            this.dataPacket(batch);
-                            // Still want to run close() to allow the player to be removed properly
-                        }
-                        this.close("", message, false);
+                        // Fukkit start - move logic to local method
+                        disconnect(loginPacket, message);
+                        // Fukkit end
                         break;
                     }
+
+                    // Fukkit start - add IP forwarding
+                    if (!this.server.getConfig("settings.proxy-enabled", false)) {
+                        return;
+                    }
+
+                    if (null == loginPacket.hostname) {
+                        disconnect(loginPacket, "disconnectionScreen.ipForwardingDisabled");
+                        return;
+                    }
+
+                    this.clientSocketAddress = new InetSocketAddress(loginPacket.hostname, this.socketAddress.getPort());
+                    // Fukkit end - add field hostname
 
                     this.username = TextFormat.clean(loginPacket.username);
                     this.displayName = this.username;
@@ -2183,7 +2208,10 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
 
                             if (this.event.getLoginResult() == LoginResult.KICK) {
                                 playerInstance.close(this.event.getKickMessage(), this.event.getKickMessage());
-                            } else if (playerInstance.shouldLogin) {
+                                return;
+                            }
+
+                            if (playerInstance.shouldLogin) {
                                 playerInstance.setSkin(this.event.getSkin());
                                 playerInstance.completeLoginSequence();
                                 for (Consumer<Server> action : this.event.getScheduledActions()) {
@@ -3439,6 +3467,19 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
         }
     }
 
+    private void disconnect(LoginPacket loginPacket, String message) {
+        if (loginPacket.protocol < 137) {
+            DisconnectPacket disconnectPacket = new DisconnectPacket();
+            disconnectPacket.message = message;
+            disconnectPacket.encode();
+            BatchPacket batch = new BatchPacket();
+            batch.payload = disconnectPacket.getBuffer();
+            this.dataPacket(batch);
+            // Still want to run close() to allow the player to be removed properly
+        }
+        this.close("", message, false);
+    }
+
     /**
      * Sends a chat message as this player. If the message begins with a / (forward-slash) it will be treated
      * as a command.
@@ -3756,11 +3797,18 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
 
             this.server.getPluginManager().unsubscribeFromPermission(Server.BROADCAST_CHANNEL_USERS, this);
             this.spawned = false;
-            this.server.getLogger().info(this.getServer().getLanguage().translateString("nukkit.player.logOut",
-                    TextFormat.AQUA + (this.getName() == null ? "" : this.getName()) + TextFormat.WHITE,
-                    this.getAddress(),
-                    String.valueOf(this.getPort()),
-                    this.getServer().getLanguage().translateString(reason)));
+
+            // Fukkit start - do not log if the proxy is not enabled or if the user is not logged in
+            //                because there is no connection to the proxy
+            if (!this.server.getConfig("proxy-enabled", false) || null != this.clientSocketAddress) {
+                this.server.getLogger().info(this.getServer().getLanguage().translateString("nukkit.player.logOut",
+                        TextFormat.AQUA + (this.getName() == null ? "" : this.getName()) + TextFormat.WHITE,
+                        this.getAddress(),
+                        String.valueOf(this.getPort()),
+                        this.getServer().getLanguage().translateString(reason)));
+            }
+            // Fukkit end
+
             this.windows.clear();
             this.usedChunks.clear();
             this.loadQueue.clear();
